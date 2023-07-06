@@ -1,0 +1,3 @@
+Touches:
+- flèches directionnelles pour aller à droiteou à gauche
+- z pour sauter
