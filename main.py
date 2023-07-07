@@ -36,10 +36,12 @@ class Controller:
         self.tutorial_to_go = 1
         self.player = Player(infos, Vec(0, 0))
         self.objects = [self.player,
-                        Platform(infos, Vec(0, 40), Vec(1000, 20))]
+                        Platform(infos, Vec(0, 40), Vec(1000, 20)),
+                        PlatformVertical(infos, Vec(100, 0))]
+        self.UIs = {}
         infos["objects"] = self.objects
         self.to_do = []
-        self.set_music("bg_music1.mp3")
+        #self.set_music("bg_music1.mp3")
 
     def set_music(self, file):
         pg.mixer.Channel(0).play(pg.mixer.Sound(os.path.dirname(__file__)+"\\"+"musics\\"+str(file)), -1)
@@ -47,24 +49,26 @@ class Controller:
     def collisions(self):
         for elt in self.objects:
             elt.collisions = []
-        for i1 in range(len(self.objects)-1):
-            for i2 in range(i1+1, len(self.objects)):
-                coll = self.objects[i1] & self.objects[i2]
-                if coll:
-                    self.objects[i1].collisions.append((self.objects[i2], *coll))
-                    self.objects[i2].collisions.append((self.objects[i1], coll[0], -coll[1]))
-                    for effect in self.objects[i1].effects:
-                        effect.act(self.objects[i2], self.objects[i1])
-                    for effect in self.objects[i2].effects:
-                        effect.act(self.objects[i1], self.objects[i2])
-                for elt in self.objects[i1].hitboxes:
-                    if elt & self.objects[i2]:
-                        for effect in elt.effects:
-                            effect.act(self.objects[i2], self.objects[i1])
-                for elt in self.objects[i2].hitboxes:
-                    if elt & self.objects[i1]:
-                        for effect in elt.effects:
-                            effect.act(self.objects[i1], self.objects[i2])
+        for i1 in range(len(self.objects)):
+            if self.objects[i1] == self.player or type(self.objects[i1]) == Sender or type(self.objects[i1] == Player):
+                for i2 in range(len(self.objects)):
+                    if i1 != i2:
+                        coll = self.objects[i1] & self.objects[i2]
+                        if coll:
+                            self.objects[i1].collisions.append((self.objects[i2], *coll))
+                            self.objects[i2].collisions.append((self.objects[i1], coll[0], -coll[1]))
+                            for effect in self.objects[i1].effects:
+                                effect.act(self.objects[i2], self.objects[i1])
+                            for effect in self.objects[i2].effects:
+                                effect.act(self.objects[i1], self.objects[i2])
+                        for elt in self.objects[i1].hitboxes:
+                            if elt & self.objects[i2]:
+                                for effect in elt.effects:
+                                    effect.act(self.objects[i2], self.objects[i1])
+                        for elt in self.objects[i2].hitboxes:
+                            if elt & self.objects[i1]:
+                                for effect in elt.effects:
+                                    effect.act(self.objects[i1], self.objects[i2])
 
     def update(self):
         if self.actual_tutorial < self.tutorial_to_go:
@@ -75,15 +79,31 @@ class Controller:
             while i < len(self.to_do):
                 if self.to_do[i][:4] == "pass":
                     self.to_do.pop(i)
-                i += 1
+                elif self.to_do[i][:6] == "sender":
+                    d = self.to_do[i].split(" ")[1:]
+                    d = Vec(int(d[0]), int(d[1]))
+                    self.objects.append(Sender(infos, self.player.pos+self.player.size/2, d, self.player))
+                    self.to_do.pop(i)
+                else:
+                    i += 1
+            i = 0
+            while i < len(self.objects):
+                if self.objects[i].controlled and self.objects[i] != self.player:
+                    self.player.controlled = False
+                    self.player = self.objects[i]
+                if self.objects[i].delete:
+                    self.objects.pop(i)
+                else:
+                    i += 1
             for elt in self.objects:
                 a = elt.update()
                 if a is not None: self.to_do.append(a)
             self.collisions()
-            for elt in self.objects:
-                a = elt.collision()
-                if a is not None: self.to_do.append(a)
-            clock.tick(30)
+            a = self.player.collision()
+            if a is not None: self.to_do.append(a)
+            for i in range(len(self.objects)-1, -1, -1):
+                if type(self.objects[i]) == Sender or type(self.objects[i]) == Player:
+                    self.objects[i].collision()
 
     def draw(self):
         infos["centre"] = self.player.pos
@@ -97,6 +117,8 @@ class Controller:
         for elt in to_draw:
             elt.draw()
         self.player.draw()
+        for elt in self.UIs:
+            self.UIs[elt].draw()
         if self.actual_tutorial < self.tutorial_to_go:
             infos["screen"].blit(self.tutorial[self.actual_tutorial], (100, 100))
         pg.display.flip()
@@ -149,4 +171,5 @@ while not end:
     if infos["inputs"]["keyboard"].keys["end"]:
         pg.quit()
         break
+    clock.tick(30)
 pg.quit()

@@ -132,7 +132,7 @@ class Object:
         self.pos = Vec(0, 0)
         self.size = Vec(0, 0)
         self.im_pos = Vec(0, 0)
-        self.speed = None
+        self.speed = Vec(0, 0)
         self.anims = None
         self.anim_rithm = 1
         self.prev_anim = "stand"
@@ -142,6 +142,10 @@ class Object:
         self.life = None
         self.hitboxes = ()
         self.effects = ()
+        self.controllable = False
+        self.delete = False
+        self.collisions = []
+        self.controlled = False
 
     def __and__(self, other):
         x1, y1 = self.pos.get()
@@ -180,7 +184,24 @@ class Object:
             self.infos["screen"].blit(image, rp.get())
 
     def collision(self):
-        pass
+        self.on_ground = False
+        collisions = []
+        for elt in self.collisions:
+            if type(elt[0]) not in ():
+                if elt[1].x() == 0 and int(elt[1].y() < 0) == int(self.speed.y() > 0):
+                    self.speed.y(0)
+                elif elt[1].y() == 0 and int(elt[1].x() < 0) == int(self.speed.x() > 0):
+                    self.speed.x(0)
+                if (elt[1] == Vec(0, -1) and elt[2] > 0) or (elt[1] == Vec(0, 1) and elt[2] < 0):
+                    self.on_ground = True
+            move = elt[1] * elt[2]
+            for v in collisions:
+                if v.x() == move.x() == 0 or v.y() == move.y() == 0:
+                    move = Vec(0, 0)
+                    break
+            collisions.append(move)
+            move = Vec(int(move.x() * 0.99), int(move.y() * 0.99))
+            self.pos += move
 
     def update(self):
         pass
@@ -240,18 +261,83 @@ class Object:
         return res
 
 
+class PlatformVertical(Object):
+    def __init__(self, infos, pos, size=Vec(30, 30)):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.size = size
+        self.inputs = "keyboard"
+        self.controllable = True
+        self.anims = {"stand": self.images("vertical")}
+
+    def update(self):
+        if self.controlled:
+            keys = self.infos["inputs"][self.inputs].keys
+            if keys["up"]:
+                self.pos += Vec(0, -5)
+            if keys["down"]:
+                self.pos += Vec(0, 5)
+            if keys["space"] and keys["right"]:
+                self.controlled = False
+                return "sender 1 0"
+            elif keys["space"] and keys["left"]:
+                self.controlled = False
+                return "sender -1 0"
+            elif keys["space"] and keys["up"]:
+                self.controlled = False
+                return "sender 0 -1"
+            elif keys["space"] and keys["down"]:
+                self.controlled = False
+                return "sender 0 1"
+
+
+class Sender(Object):
+    def __init__(self, infos, pos, direction, sender):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.dir = direction
+        self.timer = 0
+        self.sender = sender
+        if direction == Vec(1, 0):
+            self.anims = {"stand": self.images("sender_right")}
+        elif direction == Vec(-1, 0):
+            self.anims = {"stand": self.images("sender_left")}
+        elif direction == Vec(0, 1):
+            self.anims = {"stand": self.images("sender_down")}
+        else:
+            self.anims = {"stand": self.images("sender_up")}
+
+    def update(self):
+        self.pos += self.dir * 30
+        self.timer += 1
+        if self.timer >= 20:
+            self.delete = True
+            self.sender.controlled = True
+
+    def collision(self):
+        print(self.collisions)
+        for elt in self.collisions:
+            if elt[0].controllable and not elt[0].controlled:
+                elt[0].controlled = True
+                self.sender.controlled = False
+                self.delete = True
+                break
+
+
 class Player(Object):
     def __init__(self, infos, pos):
         Object.__init__(self, infos)
         self.pos = pos
+        self.controlled = True
+        self.proximity = 1
         self.size = Vec(20, 40)
         self.im_pos = Vec(0, 0)
         self.speed = Vec(0, 0)
         self.collisions = []
         self.inputs = "keyboard"
         self.on_ground = False
-        self.life = 10
         self.jump = False
+        self.controllable = True
         self.anims = {"stand": self.images("stand"),
                       "walk_right": self.images("walk_right"),
                       "walk_left": self.images("walk_left"),
@@ -259,75 +345,67 @@ class Player(Object):
                       "jump_left": self.images("jump_left"),
                       "fall_right": self.images("fall_right"),
                       "fall_left": self.images("fall_left")}
-        self.proximity = 1
-
-    def collision(self):
-        self.on_ground = False
-        collisions = []
-        for elt in self.collisions:
-            if type(elt[0]) not in ():
-                if elt[1].x() == 0 and int(elt[1].y() < 0) == int(self.speed.y() > 0):
-                    self.speed.y(0)
-                elif elt[1].y() == 0 and int(elt[1].x() < 0) == int(self.speed.x() > 0):
-                    self.speed.x(0)
-                if (elt[1] == Vec(0, -1) and elt[2] > 0) or (elt[1] == Vec(0, 1) and elt[2] < 0):
-                    self.on_ground = True
-            move = elt[1] * elt[2]
-            for v in collisions:
-                if v.x() == move.x() == 0 or v.y() == move.y() == 0:
-                    move = Vec(0, 0)
-                    break
-            collisions.append(move)
-            move = Vec(int(move.x()*0.99), int(move.y()*0.99))
-            self.pos += move
 
     def update(self):
-        keys = self.infos["inputs"][self.inputs].keys
-        acceleration = Vec(0, 0)
-        if keys["right"] and self.speed.x() < 6:
-            acceleration += Vec(0.7, 0)
-            if self.on_ground:
-                self.anim = "walk_right"
-        if keys["left"] and self.speed.x() > -6:
-            acceleration += Vec(-0.7, 0)
-            if self.on_ground:
-                self.anim = "walk_left"
-        if self.speed.x() > 6:
-            acceleration += Vec(-1, 0)
-        elif self.speed.x() < -6:
-            acceleration += Vec(1, 0)
-        if not keys["left"] and not keys["right"] and abs(self.speed.x()) <= 1:
-            self.speed.x(0)
-            if self.on_ground:
-                self.anim = "stand"
-        elif not keys["right"] and self.speed.x() > 0:
-            acceleration += Vec(-0.7, 0)
-        elif not keys["left"] and self.speed.x() < 0:
-            acceleration += Vec(0.7, 0)
-        if keys["jump"] and self.on_ground:
-            self.speed += Vec(0, -15)
-            self.jump = True
-            if self.anim_dir() == -1:
-                self.anim = "jump_left"
-            else:
-                self.anim = "jump_right"
-        if self.jump and self.speed.y() > 0:
-            if self.anim_dir() == -1:
-                self.anim = "fall_left"
-            else:
-                self.anim = "fall_right"
-            self.jump = False
-        if not self.on_ground and self.speed.y() < 13:
-            acceleration += Vec(0, 1.5)
-        self.speed += acceleration
-        self.pos += self.speed
+        if self.controlled:
+            keys = self.infos["inputs"][self.inputs].keys
+            acceleration = Vec(0, 0)
+            if keys["right"] and self.speed.x() < 6:
+                acceleration += Vec(0.7, 0)
+                if self.on_ground:
+                    self.anim = "walk_right"
+            if keys["left"] and self.speed.x() > -6:
+                acceleration += Vec(-0.7, 0)
+                if self.on_ground:
+                    self.anim = "walk_left"
+            if self.speed.x() > 6:
+                acceleration += Vec(-1, 0)
+            elif self.speed.x() < -6:
+                acceleration += Vec(1, 0)
+            if not keys["left"] and not keys["right"] and abs(self.speed.x()) <= 1:
+                self.speed.x(0)
+                if self.on_ground:
+                    self.anim = "stand"
+            elif not keys["right"] and self.speed.x() > 0:
+                acceleration += Vec(-0.7, 0)
+            elif not keys["left"] and self.speed.x() < 0:
+                acceleration += Vec(0.7, 0)
+            if keys["up"] and self.on_ground:
+                self.speed += Vec(0, -15)
+                self.jump = True
+                if self.anim_dir() == -1:
+                    self.anim = "jump_left"
+                else:
+                    self.anim = "jump_right"
+            if self.jump and self.speed.y() > 0:
+                if self.anim_dir() == -1:
+                    self.anim = "fall_left"
+                else:
+                    self.anim = "fall_right"
+                self.jump = False
+            if not self.on_ground and self.speed.y() < 13:
+                acceleration += Vec(0, 1.5)
+            self.speed += acceleration
+            self.pos += self.speed
+            if keys["space"]:
+                self.speed.x(0)
+                self.controlled = False
+            if keys["space"] and keys["right"]:
+                return "sender 1 0"
+            elif keys["space"] and keys["left"]:
+                return "sender -1 0"
+            elif keys["space"] and keys["up"]:
+                return "sender 0 -1"
+            elif keys["space"] and keys["down"]:
+                return "sender 0 1"
+        else:
+            if not self.on_ground and self.speed.y() < 13:
+                self.speed += Vec(0, 1.5)
+            self.pos += self.speed
 
     @staticmethod
     def set_music(file):
         pg.mixer.Channel(2).play(pg.mixer.Sound("musics/" + str(file)))
-
-    def take_damage(self, damage, sender):
-        self.life -= damage
 
 
 class Platform(Object):
