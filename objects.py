@@ -146,6 +146,9 @@ class Object:
         self.delete = False
         self.collisions = []
         self.controlled = False
+        self.wireless_controlled = False
+        self.direction = "1 0"
+        self.inputs = "keyboard"
 
     def __and__(self, other):
         x1, y1 = self.pos.get()
@@ -172,36 +175,41 @@ class Object:
                 return True
             return False
 
-    def rp(self):
-        return self.pos + self.im_pos - self.infos["centre"] + self.infos["screen_center"]
+    def rp(self, pos=None):
+        if pos is None:
+            return self.pos + self.im_pos - self.infos["centre"] + self.infos["screen_center"]
+        return pos - self.infos["centre"] + self.infos["screen_center"]
 
     def draw(self):
         rp = self.rp()
         if self.anims is None:
-            pg.draw.rect(self.infos["screen"], (255, 255, 255), pg.Rect(*rp.get(), *self.size.get()), 3)
+            pg.draw.rect(self.infos["screen"], (100, 100, 100), pg.Rect(*rp.get(), *self.size.get()))
         else:
             image = self.animation_change()
             self.infos["screen"].blit(image, rp.get())
+
+    def secondary_draw(self):
+        pass
 
     def collision(self):
         self.on_ground = False
         collisions = []
         for elt in self.collisions:
-            if type(elt[0]) not in ():
+            if type(elt[0]) not in (Sender, Player):
                 if elt[1].x() == 0 and int(elt[1].y() < 0) == int(self.speed.y() > 0):
                     self.speed.y(0)
                 elif elt[1].y() == 0 and int(elt[1].x() < 0) == int(self.speed.x() > 0):
                     self.speed.x(0)
                 if (elt[1] == Vec(0, -1) and elt[2] > 0) or (elt[1] == Vec(0, 1) and elt[2] < 0):
                     self.on_ground = True
-            move = elt[1] * elt[2]
-            for v in collisions:
-                if v.x() == move.x() == 0 or v.y() == move.y() == 0:
-                    move = Vec(0, 0)
-                    break
-            collisions.append(move)
-            move = Vec(int(move.x() * 0.99), int(move.y() * 0.99))
-            self.pos += move
+                move = elt[1] * elt[2]
+                for v in collisions:
+                    if v.x() == move.x() == 0 or v.y() == move.y() == 0:
+                        move = Vec(0, 0)
+                        break
+                collisions.append(move)
+                move = Vec(int(move.x() * 0.99), int(move.y() * 0.99))
+                self.pos += move
 
     def update(self):
         pass
@@ -247,48 +255,232 @@ class Object:
         return 0
 
     @staticmethod
-    def images(filename, doing_after="reboot"):
+    def images(filename, doing_after="reboot", size=None):
         i = 1
         res = []
         end = False
         while not end:
             f = os.path.dirname(__file__)+"\\"+"images\\"+filename+"_"+str(i)+".png"
             if os.path.exists(f):
-                res.append(pg.image.load(f))
+                if size is not None:
+                    im = pg.transform.scale(pg.image.load(f), size.get())
+                else:
+                    im = pg.image.load(f)
+                res.append(im)
             else: end = True
             i += 1
         res.append(doing_after)
         return res
 
 
+class Checkpoint(Object):
+    def __init__(self, infos, pos):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.size = Vec(50, 50)
+        self.controllable = True
+        self.proximity = 1
+        self.anims = {"stand": self.images("finisher")}
+
+    def update(self):
+        if self.controlled:
+            return "new_checkpoint"
+
+
+class Door(Object):
+    def __init__(self, infos, pos, size=Vec(50, 50)):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.size = size
+        self.activ = False
+        self.anims = {"stand": self.images("door"),
+                      "open": self.images("door_open")}
+
+    def update(self):
+        if self.activ:
+            self.anim = "open"
+            if self.anim_timer >= 1:
+                self.delete = True
+
+
+class Button(Object):
+    def __init__(self, infos, pos, to_activate):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.controllable = True
+        self.size = Vec(50, 50)
+        self.anims = {"stand": self.images("button"),
+                      "activated": self.images("button_activated")}
+        self.to_activate = to_activate
+
+    def update(self):
+        if self.controlled:
+            keys = self.infos["inputs"][self.inputs].keys
+            self.to_activate.activ = True
+            self.anim = "activated"
+            if keys["right"]:
+                self.direction = "1 0"
+            elif keys["left"]:
+                self.direction = "-1 0"
+            elif keys["up"]:
+                self.direction = "0 -1"
+            elif keys["down"]:
+                self.direction = "0 1"
+            if keys["space"]:
+                self.controlled = False
+                self.speed.x(0)
+                return "sender " + self.direction
+
+
+class ActivatorByPos(Object):
+    def __init__(self, infos, pos, size, to_activate):
+        Object.__init__(self, infos)
+        self.act_pos = pos
+        self.act_size = size
+        self.to_activate = to_activate
+
+    def update(self):
+        for elt in self.infos["objects"]:
+            if elt.size == self.act_size and dist(elt.pos, self.act_pos) < 10:
+                self.to_activate.activ = True
+                break
+
+    def draw(self):
+        pass
+
+    def secondary_draw(self):
+        rp = self.rp(self.act_pos)
+        pg.draw.rect(self.infos["screen"], (150, 0, 200), pg.Rect(*rp.get(), *self.act_size.get()))
+
+
 class PlatformVertical(Object):
-    def __init__(self, infos, pos, size=Vec(30, 30)):
+    def __init__(self, infos, pos, size=Vec(50, 50), max_up=None, max_down=None):
         Object.__init__(self, infos)
         self.pos = pos
         self.size = size
         self.inputs = "keyboard"
         self.controllable = True
-        self.anims = {"stand": self.images("vertical")}
+        self.anims = {"stand": self.images("vertical", size=self.size)}
+        self.max_up = max_up
+        self.max_down = max_down
 
     def update(self):
-        if self.controlled:
-            keys = self.infos["inputs"][self.inputs].keys
-            if keys["up"]:
+        keys = self.infos["inputs"][self.inputs].keys
+        if self.controlled or self.wireless_controlled:
+            self.speed = Vec(0, 0)
+            if keys["up"] and (self.max_up is None or self.max_up < self.pos.y()):
+                self.speed = Vec(0, -2.5)
                 self.pos += Vec(0, -5)
-            if keys["down"]:
+            if keys["down"] and (self.max_down is None or self.max_down > self.pos.y()):
+                self.speed = Vec(0, 2.5)
                 self.pos += Vec(0, 5)
-            if keys["space"] and keys["right"]:
+        if self.controlled:
+            if keys["right"]:
+                self.direction = "1 0"
+            elif keys["left"]:
+                self.direction = "-1 0"
+            elif keys["up"]:
+                self.direction = "0 -1"
+            elif keys["down"]:
+                self.direction = "0 1"
+            if keys["space"]:
                 self.controlled = False
-                return "sender 1 0"
-            elif keys["space"] and keys["left"]:
+                self.speed.x(0)
+                return "sender " + self.direction
+
+    def secondary_draw(self):
+        if self.controlled:
+            m = self.pos.copy()
+            m.y(self.max_up)
+            M = self.pos+self.size
+            M.y(self.max_down+self.size.y())
+            rp = self.rp(m)
+            pg.draw.rect(self.infos["screen"], (0, 255, 100), pg.Rect(*rp.get(), *(M-m).get()))
+
+
+class Mirror(Object):
+    def __init__(self, infos, pos, in_dir, out_dir):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.size = Vec(50, 50)
+        self.in_dir = in_dir
+        self.out_dir = out_dir
+        if in_dir == Vec(0, -1) and out_dir == Vec(1, 0):
+            self.anims = {"stand": self.images("mirroir_bd")}
+
+
+class PlatformHorizontal(Object):
+    def __init__(self, infos, pos, size=Vec(50, 50), max_right=None, max_left=None):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.size = size
+        self.inputs = "keyboard"
+        self.controllable = True
+        self.max_right = max_right
+        self.max_left = max_left
+        self.anims = {"stand": self.images("horizontal")}
+
+    def secondary_draw(self):
+        if self.controlled:
+            m = self.pos.copy()
+            m.x(self.max_left)
+            M = self.pos+self.size
+            M.x(self.max_right+self.size.x())
+            rp = self.rp(m)
+            pg.draw.rect(self.infos["screen"], (0, 255, 100), pg.Rect(*rp.get(), *(M-m).get()))
+
+    def update(self):
+        keys = self.infos["inputs"][self.inputs].keys
+        if self.controlled or self.wireless_controlled:
+            if keys["right"] and (self.max_right is None or self.pos.x() < self.max_right):
+                self.speed = Vec(2.5, 0)
+                self.pos += Vec(5, 0)
+            elif keys["left"] and (self.max_left is None or self.pos.x() > self.max_left):
+                self.speed = Vec(-2.5, 0)
+                self.pos += Vec(-5, 0)
+            else:
+                self.speed = Vec(0, 0)
+        if self.controlled:
+            if keys["right"]:
+                self.direction = "1 0"
+            elif keys["left"]:
+                self.direction = "-1 0"
+            elif keys["up"]:
+                self.direction = "0 -1"
+            elif keys["down"]:
+                self.direction = "0 1"
+            if keys["space"]:
+                self.speed.x(0)
                 self.controlled = False
-                return "sender -1 0"
-            elif keys["space"] and keys["up"]:
+                return "sender " + self.direction
+
+
+class Lever(Object):
+    def __init__(self, infos, pos, control):
+        Object.__init__(self, infos)
+        self.infos = infos
+        self.pos = pos
+        self.controllable = True
+        self.size = Vec(30, 30)
+        self.control = control
+        self.anims = {"stand": self.images("lever")}
+
+    def update(self):
+        self.control.wireless_controlled = self.controlled
+        keys = self.infos["inputs"][self.inputs].keys
+        if self.controlled:
+            if keys["right"]:
+                self.direction = "1 0"
+            elif keys["left"]:
+                self.direction = "-1 0"
+            elif keys["up"]:
+                self.direction = "0 -1"
+            elif keys["down"]:
+                self.direction = "0 1"
+            if keys["space"]:
+                self.speed.x(0)
                 self.controlled = False
-                return "sender 0 -1"
-            elif keys["space"] and keys["down"]:
-                self.controlled = False
-                return "sender 0 1"
+                return "sender " + self.direction
 
 
 class Sender(Object):
@@ -308,29 +500,55 @@ class Sender(Object):
             self.anims = {"stand": self.images("sender_up")}
 
     def update(self):
-        self.pos += self.dir * 30
+        self.pos += self.dir * 20
         self.timer += 1
         if self.timer >= 20:
             self.delete = True
             self.sender.controlled = True
 
     def collision(self):
-        print(self.collisions)
         for elt in self.collisions:
-            if elt[0].controllable and not elt[0].controlled:
+            if elt[0].controllable and elt[0] != self.sender:
                 elt[0].controlled = True
                 self.sender.controlled = False
                 self.delete = True
                 break
+            elif type(elt[0]) == Mirror:
+                if self.dir == elt[0].in_dir:
+                    self.pos = elt[0].pos+elt[0].size/2
+                    self.dir = elt[0].out_dir
+                    self.timer = max(0, self.timer - 10)
+                    if self.dir == Vec(1, 0):
+                        self.anims = {"stand": self.images("sender_right")}
+                    elif self.dir == Vec(-1, 0):
+                        self.anims = {"stand": self.images("sender_left")}
+                    elif self.dir == Vec(0, 1):
+                        self.anims = {"stand": self.images("sender_down")}
+                    else:
+                        self.anims = {"stand": self.images("sender_up")}
+                elif self.dir == -elt[0].out_dir:
+                    self.pos = elt[0].pos+elt[0].size/2
+                    self.dir = -elt[0].in_dir
+                    self.timer = max(0, self.timer - 10)
+                    if self.dir == Vec(1, 0):
+                        self.anims = {"stand": self.images("sender_right")}
+                    elif self.dir == Vec(-1, 0):
+                        self.anims = {"stand": self.images("sender_left")}
+                    elif self.dir == Vec(0, 1):
+                        self.anims = {"stand": self.images("sender_down")}
+                    else:
+                        self.anims = {"stand": self.images("sender_up")}
+            elif elt[0] != self.sender:
+                self.delete = True
+                self.sender.controlled = True
 
 
 class Player(Object):
     def __init__(self, infos, pos):
         Object.__init__(self, infos)
         self.pos = pos
-        self.controlled = True
         self.proximity = 1
-        self.size = Vec(20, 40)
+        self.size = Vec(40, 40)
         self.im_pos = Vec(0, 0)
         self.speed = Vec(0, 0)
         self.collisions = []
@@ -347,8 +565,8 @@ class Player(Object):
                       "fall_left": self.images("fall_left")}
 
     def update(self):
-        if self.controlled:
-            keys = self.infos["inputs"][self.inputs].keys
+        keys = self.infos["inputs"][self.inputs].keys
+        if self.controlled or self.wireless_controlled:
             acceleration = Vec(0, 0)
             if keys["right"] and self.speed.x() < 6:
                 acceleration += Vec(0.7, 0)
@@ -387,18 +605,21 @@ class Player(Object):
                 acceleration += Vec(0, 1.5)
             self.speed += acceleration
             self.pos += self.speed
+        if self.controlled:
+            if keys["right"]:
+                self.direction = "1 0"
+            elif keys["left"]:
+                self.direction = "-1 0"
+            elif keys["up"]:
+                self.direction = "0 -1"
+            elif keys["down"]:
+                self.direction = "0 1"
             if keys["space"]:
                 self.speed.x(0)
                 self.controlled = False
-            if keys["space"] and keys["right"]:
-                return "sender 1 0"
-            elif keys["space"] and keys["left"]:
-                return "sender -1 0"
-            elif keys["space"] and keys["up"]:
-                return "sender 0 -1"
-            elif keys["space"] and keys["down"]:
-                return "sender 0 1"
+                return "sender "+self.direction
         else:
+            self.anim = "stand"
             if not self.on_ground and self.speed.y() < 13:
                 self.speed += Vec(0, 1.5)
             self.pos += self.speed
@@ -406,6 +627,28 @@ class Player(Object):
     @staticmethod
     def set_music(file):
         pg.mixer.Channel(2).play(pg.mixer.Sound("musics/" + str(file)))
+
+    def collision(self):
+        self.on_ground = False
+        collisions = []
+        for elt in self.collisions:
+            if type(elt[0]) not in (Sender,):
+                if elt[1].x() == 0 and int(elt[1].y() < 0) == int(self.speed.y() > 0):
+                    self.speed.y(0)
+                elif elt[1].y() == 0 and int(elt[1].x() < 0) == int(self.speed.x() > 0):
+                    self.speed.x(0)
+                if (elt[1] == Vec(0, -1) and elt[2] > 0) or (elt[1] == Vec(0, 1) and elt[2] < 0):
+                    self.on_ground = True
+                move = elt[1] * elt[2]
+                for v in collisions:
+                    if v.x() == move.x() == 0 or v.y() == move.y() == 0:
+                        move = Vec(0, 0)
+                        break
+                if elt[0].controlled:
+                    self.pos += elt[0].speed
+                collisions.append(move)
+                move = Vec(int(move.x() * 0.99), int(move.y() * 0.99))
+                self.pos += move
 
 
 class Platform(Object):
