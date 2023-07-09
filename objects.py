@@ -195,7 +195,7 @@ class Object:
         self.on_ground = False
         collisions = []
         for elt in self.collisions:
-            if type(elt[0]) not in (Sender, Player):
+            if type(elt[0]) not in (Sender, Player) and not (type(elt[0]) == Door and not elt[0].activ):
                 if elt[1].x() == 0 and int(elt[1].y() < 0) == int(self.speed.y() > 0):
                     self.speed.y(0)
                 elif elt[1].y() == 0 and int(elt[1].x() < 0) == int(self.speed.x() > 0):
@@ -232,9 +232,13 @@ class Object:
         if self.anims[self.anim][anim_timer] == "reboot":
             self.anim_timer = 0
             image = self.anims[self.anim][0]
+        elif self.anims[self.anim][anim_timer] == "pause":
+            self.anim_timer -= 1
+            image = self.anims[self.anim][self.anim_timer]
         elif type(self.anims[self.anim][anim_timer]) == str:
             self.anim = self.anims[self.anim][anim_timer]
             image = self.anims[self.anim][0]
+            self.anim_timer = 0
         else: image = self.anims[self.anim][anim_timer]
         if self.prev_anim == self.anim: self.anim_timer += 1/self.anim_rithm
         self.prev_anim = self.anim
@@ -274,12 +278,13 @@ class Object:
 
 
 class Checkpoint(Object):
-    def __init__(self, infos, pos):
+    def __init__(self, infos, pos, end_lvl=False):
         Object.__init__(self, infos)
         self.pos = pos
         self.size = Vec(50, 50)
         self.controllable = True
         self.proximity = 1
+        self.end_lvl = end_lvl
         self.anims = {"stand": self.images("finisher")}
 
     def update(self):
@@ -288,19 +293,29 @@ class Checkpoint(Object):
 
 
 class Door(Object):
-    def __init__(self, infos, pos, size=Vec(50, 50)):
+    def __init__(self, infos, pos, activated_by=0):
         Object.__init__(self, infos)
         self.pos = pos
-        self.size = size
+        self.size = Vec(50, 50)
         self.activ = False
+        self.font = pg.font.Font(None, 30)
+        self.activated_by = activated_by
         self.anims = {"stand": self.images("door"),
-                      "open": self.images("door_open")}
+                      "opening": self.images("door_open", "open"),
+                      "open": self.images("open")}
 
     def update(self):
-        if self.activ:
-            self.anim = "open"
-            if self.anim_timer >= 1:
-                self.delete = True
+        if self.activ and self.anim[:4] != "open":
+            self.anim = "opening"
+        elif not self.activ:
+            self.anim = "stand"
+
+    def draw(self):
+        rp = self.rp()
+        image = self.animation_change()
+        self.infos["screen"].blit(image, rp.get())
+        im = self.font.render(str(self.activated_by), True, (0, 0, 0))
+        self.infos["screen"].blit(im, (rp+self.size/2-Vec(10, 10)).get())
 
 
 class Button(Object):
@@ -308,6 +323,7 @@ class Button(Object):
         Object.__init__(self, infos)
         self.pos = pos
         self.controllable = True
+        self.font = pg.font.Font(None, 30)
         self.size = Vec(50, 50)
         self.anims = {"stand": self.images("button"),
                       "activated": self.images("button_activated")}
@@ -331,6 +347,13 @@ class Button(Object):
                 self.speed.x(0)
                 return "sender " + self.direction
 
+    def draw(self):
+        rp = self.rp()
+        image = self.animation_change()
+        self.infos["screen"].blit(image, rp.get())
+        im = self.font.render(str(self.to_activate.activated_by), True, (0, 0, 0))
+        self.infos["screen"].blit(im, (rp + self.size / 2-Vec(10, 10)).get())
+
 
 class ActivatorByPos(Object):
     def __init__(self, infos, pos, size, to_activate):
@@ -338,10 +361,12 @@ class ActivatorByPos(Object):
         self.act_pos = pos
         self.act_size = size
         self.to_activate = to_activate
+        self.font = pg.font.Font(None, 30)
 
     def update(self):
+        self.to_activate.activ = False
         for elt in self.infos["objects"]:
-            if elt.size == self.act_size and dist(elt.pos, self.act_pos) < 10:
+            if elt.size == self.act_size and dist(elt.pos, self.act_pos) < 30:
                 self.to_activate.activ = True
                 break
 
@@ -350,7 +375,10 @@ class ActivatorByPos(Object):
 
     def secondary_draw(self):
         rp = self.rp(self.act_pos)
-        pg.draw.rect(self.infos["screen"], (150, 0, 200), pg.Rect(*rp.get(), *self.act_size.get()))
+        pg.draw.rect(self.infos["screen"], (200, 0, 255), pg.Rect(*(rp+Vec(10, 10)).get(),
+                                                                  *(self.act_size-Vec(20, 20)).get()))
+        im = self.font.render(str(self.to_activate.activated_by), True, (0, 0, 0))
+        self.infos["screen"].blit(im, (rp+self.size/2+Vec(10, 10)).get())
 
 
 class PlatformVertical(Object):
@@ -369,11 +397,11 @@ class PlatformVertical(Object):
         if self.controlled or self.wireless_controlled:
             self.speed = Vec(0, 0)
             if keys["up"] and (self.max_up is None or self.max_up < self.pos.y()):
-                self.speed = Vec(0, -2.5)
-                self.pos += Vec(0, -5)
+                self.speed = Vec(0, -5)
+                self.pos += Vec(0, -10)
             if keys["down"] and (self.max_down is None or self.max_down > self.pos.y()):
-                self.speed = Vec(0, 2.5)
-                self.pos += Vec(0, 5)
+                self.speed = Vec(0, 5)
+                self.pos += Vec(0, 10)
         if self.controlled:
             if keys["right"]:
                 self.direction = "1 0"
@@ -389,7 +417,7 @@ class PlatformVertical(Object):
                 return "sender " + self.direction
 
     def secondary_draw(self):
-        if self.controlled:
+        if self.controlled or self.wireless_controlled:
             m = self.pos.copy()
             m.y(self.max_up)
             M = self.pos+self.size
@@ -407,21 +435,61 @@ class Mirror(Object):
         self.out_dir = out_dir
         if in_dir == Vec(0, -1) and out_dir == Vec(1, 0):
             self.anims = {"stand": self.images("mirroir_bd")}
+        if in_dir == Vec(0, -1) and out_dir == Vec(-1, 0):
+            self.anims = {"stand": self.images("mirroir_bg")}
+
+
+class Observer(Object):
+    def __init__(self, infos, pos, size=Vec(50, 50)):
+        Object.__init__(self, infos)
+        self.pos = pos
+        self.size = size
+        self.controllable = True
+        self.inputs = "keyboard"
+        self.anims = {"stand": self.images("observer", size=self.size)}
+
+    def update(self):
+        if self.controlled:
+            keys = self.infos["inputs"][self.inputs].keys
+            if keys["right"]:
+                self.direction = "1 0"
+            elif keys["left"]:
+                self.direction = "-1 0"
+            elif keys["up"]:
+                self.direction = "0 -1"
+            elif keys["down"]:
+                self.direction = "0 1"
+            if keys["space"]:
+                self.speed.x(0)
+                self.controlled = False
+                return "sender " + self.direction
 
 
 class PlatformHorizontal(Object):
-    def __init__(self, infos, pos, size=Vec(50, 50), max_right=None, max_left=None):
+    def __init__(self, infos, pos, size=Vec(50, 50), max_right=None, max_left=None, only_wireless=-1):
         Object.__init__(self, infos)
         self.pos = pos
         self.size = size
         self.inputs = "keyboard"
-        self.controllable = True
+        self.only_wireless = only_wireless
+        if only_wireless < 0:
+            self.controllable = True
         self.max_right = max_right
+        self.font = pg.font.Font(None, 40)
         self.max_left = max_left
-        self.anims = {"stand": self.images("horizontal")}
+        self.anims = {"stand": self.images("horizontal", size=self.size)}
+
+    def draw(self):
+        rp = self.rp()
+        image = self.animation_change()
+        self.infos["screen"].blit(image, rp.get())
+        if self.only_wireless >= 0:
+            im = self.font.render(str(self.only_wireless), True, (255, 255, 255))
+            self.infos["screen"].blit(im, (rp + self.size / 2 - Vec(10, 10)).get())
+
 
     def secondary_draw(self):
-        if self.controlled:
+        if self.controlled or self.wireless_controlled:
             m = self.pos.copy()
             m.x(self.max_left)
             M = self.pos+self.size
@@ -433,11 +501,11 @@ class PlatformHorizontal(Object):
         keys = self.infos["inputs"][self.inputs].keys
         if self.controlled or self.wireless_controlled:
             if keys["right"] and (self.max_right is None or self.pos.x() < self.max_right):
-                self.speed = Vec(2.5, 0)
-                self.pos += Vec(5, 0)
+                self.speed = Vec(5, 0)
+                self.pos += Vec(10, 0)
             elif keys["left"] and (self.max_left is None or self.pos.x() > self.max_left):
-                self.speed = Vec(-2.5, 0)
-                self.pos += Vec(-5, 0)
+                self.speed = Vec(-5, 0)
+                self.pos += Vec(-10, 0)
             else:
                 self.speed = Vec(0, 0)
         if self.controlled:
@@ -487,6 +555,7 @@ class Sender(Object):
     def __init__(self, infos, pos, direction, sender):
         Object.__init__(self, infos)
         self.pos = pos
+        self.size = Vec(30, 30)
         self.dir = direction
         self.timer = 0
         self.sender = sender
@@ -502,7 +571,7 @@ class Sender(Object):
     def update(self):
         self.pos += self.dir * 20
         self.timer += 1
-        if self.timer >= 20:
+        if self.timer >= 30:
             self.delete = True
             self.sender.controlled = True
 
@@ -515,7 +584,7 @@ class Sender(Object):
                 break
             elif type(elt[0]) == Mirror:
                 if self.dir == elt[0].in_dir:
-                    self.pos = elt[0].pos+elt[0].size/2
+                    self.pos = elt[0].pos+elt[0].size/2-self.size/2
                     self.dir = elt[0].out_dir
                     self.timer = max(0, self.timer - 10)
                     if self.dir == Vec(1, 0):
@@ -527,7 +596,7 @@ class Sender(Object):
                     else:
                         self.anims = {"stand": self.images("sender_up")}
                 elif self.dir == -elt[0].out_dir:
-                    self.pos = elt[0].pos+elt[0].size/2
+                    self.pos = elt[0].pos+elt[0].size/2-self.size/2
                     self.dir = -elt[0].in_dir
                     self.timer = max(0, self.timer - 10)
                     if self.dir == Vec(1, 0):
@@ -538,7 +607,7 @@ class Sender(Object):
                         self.anims = {"stand": self.images("sender_down")}
                     else:
                         self.anims = {"stand": self.images("sender_up")}
-            elif elt[0] != self.sender:
+            elif elt[0] != self.sender and not (type(elt[0]) == Door and elt[0].activ):
                 self.delete = True
                 self.sender.controlled = True
 
@@ -555,8 +624,13 @@ class Player(Object):
         self.inputs = "keyboard"
         self.on_ground = False
         self.jump = False
+        self.activ = False
+        self.bonus_jump = True
         self.controllable = True
-        self.anims = {"stand": self.images("stand"),
+        self.anim_rithm = 3
+        self.anim = "stand_right"
+        self.anims = {"stand_right": self.images("stand_right"),
+                      "stand_left": self.images("stand_left"),
                       "walk_right": self.images("walk_right"),
                       "walk_left": self.images("walk_left"),
                       "jump_right": self.images("jump_right"),
@@ -567,6 +641,7 @@ class Player(Object):
     def update(self):
         keys = self.infos["inputs"][self.inputs].keys
         if self.controlled or self.wireless_controlled:
+            self.activ = True
             acceleration = Vec(0, 0)
             if keys["right"] and self.speed.x() < 6:
                 acceleration += Vec(0.7, 0)
@@ -583,13 +658,19 @@ class Player(Object):
             if not keys["left"] and not keys["right"] and abs(self.speed.x()) <= 1:
                 self.speed.x(0)
                 if self.on_ground:
-                    self.anim = "stand"
+                    if self.anim_dir() == -1:
+                        self.anim = "stand_left"
+                    else:
+                        self.anim = "stand_right"
             elif not keys["right"] and self.speed.x() > 0:
                 acceleration += Vec(-0.7, 0)
             elif not keys["left"] and self.speed.x() < 0:
                 acceleration += Vec(0.7, 0)
-            if keys["up"] and self.on_ground:
-                self.speed += Vec(0, -15)
+            if self.on_ground:
+                self.bonus_jump = False
+            if keys["up"] and (self.on_ground or self.bonus_jump):
+                self.bonus_jump = False
+                self.speed.y(-15)
                 self.jump = True
                 if self.anim_dir() == -1:
                     self.anim = "jump_left"
@@ -618,9 +699,18 @@ class Player(Object):
                 self.speed.x(0)
                 self.controlled = False
                 return "sender "+self.direction
+            if (self.pos.x() < 6000 and self.pos.y() > 100) or (self.pos.x() < 8000 and self.pos.y() > 200) or \
+                    (self.pos.x() < 9000 and self.pos.y() > 1100) or (self.pos.x() < 13800 and self.pos.y() > 600) or \
+                    (self.pos.x() > 13800 and self.pos.y() > 1100):
+                return "reset"
+            if self.anim[:4] == "fall": self.anim_rithm = 5
+            else: self.anim_rithm = 3
         else:
-            self.anim = "stand"
-            if not self.on_ground and self.speed.y() < 13:
+            if self.anim_dir() == -1:
+                self.anim = "stand_left"
+            else:
+                self.anim = "stand_right"
+            if not self.on_ground and self.speed.y() < 13 and self.activ:
                 self.speed += Vec(0, 1.5)
             self.pos += self.speed
 
@@ -632,9 +722,11 @@ class Player(Object):
         self.on_ground = False
         collisions = []
         for elt in self.collisions:
-            if type(elt[0]) not in (Sender,):
+            if type(elt[0]) not in (Sender,) and not (type(elt[0]) == Door and elt[0].activ):
                 if elt[1].x() == 0 and int(elt[1].y() < 0) == int(self.speed.y() > 0):
                     self.speed.y(0)
+                    if elt[0].controlled:
+                        self.pos += elt[0].speed*2
                 elif elt[1].y() == 0 and int(elt[1].x() < 0) == int(self.speed.x() > 0):
                     self.speed.x(0)
                 if (elt[1] == Vec(0, -1) and elt[2] > 0) or (elt[1] == Vec(0, 1) and elt[2] < 0):
@@ -644,8 +736,6 @@ class Player(Object):
                     if v.x() == move.x() == 0 or v.y() == move.y() == 0:
                         move = Vec(0, 0)
                         break
-                if elt[0].controlled:
-                    self.pos += elt[0].speed
                 collisions.append(move)
                 move = Vec(int(move.x() * 0.99), int(move.y() * 0.99))
                 self.pos += move
@@ -669,15 +759,19 @@ class Platform(Object):
 class Keyboard:
     def __init__(self):
         self.keys = {"end": False, "right": False, "left": False, "jump": False, "end_turn": False,
-                     "up": False, "down": False, "dash": False, "reset": False}
+                     "up": False, "down": False, "dash": False, "reset": False, "escape": False, "resized": False}
 
     def update(self):
         self.keys["end_turn"] = False
         self.keys["reset"] = False
         self.keys["space"] = False
+        self.keys["escape"] = False
+        self.keys["resized"] = False
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 self.keys["end"] = True
+            elif event.type == pg.WINDOWRESIZED:
+                self.keys["resized"] = True
             elif event.type == pg.KEYDOWN:
                 if event.key == pg.K_RIGHT:
                     self.keys["right"] = True
@@ -706,3 +800,5 @@ class Keyboard:
                     self.keys["end_turn"] = True
                 elif event.key == pg.K_r:
                     self.keys["reset"] = True
+                elif event.key == pg.K_ESCAPE:
+                    self.keys["escape"] = True
