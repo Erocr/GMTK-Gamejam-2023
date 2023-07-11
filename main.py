@@ -32,14 +32,13 @@ class Controller:
         global infos
         self.tutorial = images("tutorial", size=(Vec(*infos["screen_size"]) - Vec(200, 200)).get())
         self.actual_tutorial = 0
-        self.tutorial_to_go = 0
+        self.tutorial_to_go = 2
         self.player = None
         self.objects = []
         self.actual_level = 0
         self.checkpoint = None
         self.lvl(True)
         self.UIs = {}
-        self.background = pg.image.load(os.path.dirname(__file__) + "\\images\\background.png")
         self.to_do = []
         # self.set_music("bg_music1.mp3")
 
@@ -221,7 +220,7 @@ class Controller:
                             Platform(infos, Vec(14250, -250), Vec(200, 200)),
                             PlatformVertical(infos, Vec(14050, -250), Vec(100, 50), max_up=-250, max_down=300),
                             Platform(infos, Vec(14700, -500), Vec(200, 800))]
-        if first_use: self.checkpoint = self.objects[0]  # 49  18  21  25  28  35  40  63  1  12  32
+        if first_use: self.checkpoint = self.objects[1]  # 49  18  21  25  28  35  40  63  1  12  32
         self.player = Player(infos, self.checkpoint.pos + Vec(-25, -50))
         self.objects.append(self.player)
         infos["objects"] = self.objects
@@ -315,7 +314,7 @@ class Controller:
                     i += 1
             i = 0
             while i < len(self.objects):
-                if self.objects[i].controlled and self.objects[i] != self.player:
+                if self.objects[i].controlled and self.objects[i] != self.player and type(self.objects[i]) != Checkpoint:
                     self.player.controlled = False
                     self.player = self.objects[i]
                 if self.objects[i].delete:
@@ -325,6 +324,8 @@ class Controller:
             for elt in self.objects:
                 a = elt.update()
                 if a is not None: self.to_do.append(a)
+                if type(elt) == Checkpoint and elt.pos == self.checkpoint.pos:
+                    elt.anim = "taked"
             self.collisions()
             a = self.player.collision()
             if a is not None: self.to_do.append(a)
@@ -337,9 +338,10 @@ class Controller:
     def draw(self):
         infos["centre"] = self.player.pos
         if type(self.player) == Lever:
-            infos["screen"] = self.player.control.pos
+            infos["centre"] = self.player.control.pos
         infos["screen"].fill((250, 250, 250))
         screen = Hitbox(infos["centre"] - Vec(*infos["screen_size"]) / 2, Vec(*infos["screen_size"]))
+        self.checkpoint.anim = "taked"
         to_draw = ()
         for elt in self.objects:
             if screen & elt or type(elt) == ActivatorByPos:

@@ -233,7 +233,7 @@ class Object:
             self.anim_timer = 0
             image = self.anims[self.anim][0]
         elif self.anims[self.anim][anim_timer] == "pause":
-            self.anim_timer -= 1
+            self.anim_timer = int(self.anim_timer-1)
             image = self.anims[self.anim][self.anim_timer]
         elif type(self.anims[self.anim][anim_timer]) == str:
             self.anim = self.anims[self.anim][anim_timer]
@@ -247,6 +247,8 @@ class Object:
     def anim_dir(self):
         underscore = False
         res = ""
+        if self.speed.x() > 0: return 1
+        elif self.speed.x() < 0: return -1
         for i in range(len(self.anim)):
             if underscore:
                 res += self.anim[i]
@@ -285,10 +287,16 @@ class Checkpoint(Object):
         self.controllable = True
         self.proximity = 1
         self.end_lvl = end_lvl
-        self.anims = {"stand": self.images("finisher")}
+        if end_lvl:
+            self.anims = {"stand": self.images("finisher_final"),
+                          "taked": self.images("finisher_final")}
+        else:
+            self.anims = {"stand": self.images("finisher"),
+                          "taked": self.images("finisher_taked")}
 
     def update(self):
         if self.controlled:
+            self.anim = "taked"
             return "new_checkpoint"
 
 
@@ -300,6 +308,7 @@ class Door(Object):
         self.activ = False
         self.font = pg.font.Font(None, 30)
         self.activated_by = activated_by
+        self.anim_rithm = 10
         self.anims = {"stand": self.images("door"),
                       "opening": self.images("door_open", "open"),
                       "open": self.images("open")}
@@ -633,10 +642,10 @@ class Player(Object):
                       "stand_left": self.images("stand_left"),
                       "walk_right": self.images("walk_right"),
                       "walk_left": self.images("walk_left"),
-                      "jump_right": self.images("jump_right"),
-                      "jump_left": self.images("jump_left"),
-                      "fall_right": self.images("fall_right"),
-                      "fall_left": self.images("fall_left")}
+                      "jump_right": self.images("jump_right", "pause"),
+                      "jump_left": self.images("jump_left", "pause"),
+                      "fall_right": self.images("fall_right", "pause"),
+                      "fall_left": self.images("fall_left", "pause")}
 
     def update(self):
         keys = self.infos["inputs"][self.inputs].keys
@@ -653,12 +662,14 @@ class Player(Object):
                     self.anim = "walk_left"
             if self.speed.x() > 6:
                 acceleration += Vec(-1, 0)
+                self.anim = "walk_right"
             elif self.speed.x() < -6:
                 acceleration += Vec(1, 0)
+                self.anim = "walk_left"
             if not keys["left"] and not keys["right"] and abs(self.speed.x()) <= 1:
                 self.speed.x(0)
                 if self.on_ground:
-                    if self.anim_dir() == -1:
+                    if self.direction == "-1 0":
                         self.anim = "stand_left"
                     else:
                         self.anim = "stand_right"
@@ -670,13 +681,13 @@ class Player(Object):
                 self.bonus_jump = False
             if keys["up"] and (self.on_ground or self.bonus_jump):
                 self.bonus_jump = False
-                self.speed.y(-15)
+                self.speed.y(-16)
                 self.jump = True
                 if self.anim_dir() == -1:
                     self.anim = "jump_left"
                 else:
                     self.anim = "jump_right"
-            if self.jump and self.speed.y() > 0:
+            if not self.on_ground and self.speed.y() > 0:
                 if self.anim_dir() == -1:
                     self.anim = "fall_left"
                 else:
@@ -699,8 +710,9 @@ class Player(Object):
                 self.speed.x(0)
                 self.controlled = False
                 return "sender "+self.direction
-            if (self.pos.x() < 6000 and self.pos.y() > 100) or (self.pos.x() < 8000 and self.pos.y() > 200) or \
-                    (self.pos.x() < 9000 and self.pos.y() > 1100) or (self.pos.x() < 13800 and self.pos.y() > 600) or \
+            if (self.pos.x() < 6000 and self.pos.y() > 100) or (6000 < self.pos.x() < 8000 and self.pos.y() > 200) or \
+                    (8000 < self.pos.x() < 9500 and self.pos.y() > 1100) or (9500 < self.pos.x() < 13800 and
+                                                                             self.pos.y() > 600) or \
                     (self.pos.x() > 13800 and self.pos.y() > 1100):
                 return "reset"
             if self.anim[:4] == "fall": self.anim_rithm = 5
