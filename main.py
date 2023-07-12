@@ -35,7 +35,7 @@ class Controller:
         self.tutorial_to_go = 2
         self.player = None
         self.objects = []
-        self.actual_level = 2
+        self.actual_level = 0
         self.checkpoint = None
         self.lvl(True)
         self.UIs = {}
