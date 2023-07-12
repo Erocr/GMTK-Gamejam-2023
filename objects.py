@@ -384,7 +384,8 @@ class ActivatorByPos(Object):
 
     def secondary_draw(self):
         rp = self.rp(self.act_pos)
-        pg.draw.rect(self.infos["screen"], (200, 0, 255), pg.Rect(*(rp+Vec(10, 10)).get(),
+        c = (255, 255, 0) if self.to_activate.activ else (200, 0, 255)
+        pg.draw.rect(self.infos["screen"], c, pg.Rect(*(rp+Vec(10, 10)).get(),
                                                                   *(self.act_size-Vec(20, 20)).get()))
         im = self.font.render(str(self.to_activate.activated_by), True, (0, 0, 0))
         self.infos["screen"].blit(im, (rp+self.size/2+Vec(10, 10)).get())
@@ -397,7 +398,10 @@ class PlatformVertical(Object):
         self.size = size
         self.inputs = "keyboard"
         self.controllable = True
-        self.anims = {"stand": self.images("vertical", size=self.size)}
+        if self.size.y() == 50:
+            self.anims = {"stand": self.images("horizontal", size=self.size)}
+        else:
+            self.anims = {"stand": self.images("vertical", size=self.size)}
         self.max_up = max_up
         self.max_down = max_down
 
@@ -406,10 +410,10 @@ class PlatformVertical(Object):
         if self.controlled or self.wireless_controlled:
             self.speed = Vec(0, 0)
             if keys["up"] and (self.max_up is None or self.max_up < self.pos.y()):
-                self.speed = Vec(0, -5)
+                self.speed = Vec(0, 0)
                 self.pos += Vec(0, -10)
             if keys["down"] and (self.max_down is None or self.max_down > self.pos.y()):
-                self.speed = Vec(0, 5)
+                self.speed = Vec(0, 2.5)
                 self.pos += Vec(0, 10)
         if self.controlled:
             if keys["right"]:
@@ -444,8 +448,12 @@ class Mirror(Object):
         self.out_dir = out_dir
         if in_dir == Vec(0, -1) and out_dir == Vec(1, 0):
             self.anims = {"stand": self.images("mirroir_bd")}
-        if in_dir == Vec(0, -1) and out_dir == Vec(-1, 0):
+        elif in_dir == Vec(0, -1) and out_dir == Vec(-1, 0):
             self.anims = {"stand": self.images("mirroir_bg")}
+        elif in_dir == Vec(0, 1) and out_dir == Vec(-1, 0):
+            self.anims = {"stand": self.images("mirroir_hg")}
+        else:
+            self.anims = {"stand": self.images("mirroir_hd")}
 
 
 class Observer(Object):
@@ -486,7 +494,10 @@ class PlatformHorizontal(Object):
         self.max_right = max_right
         self.font = pg.font.Font(None, 40)
         self.max_left = max_left
-        self.anims = {"stand": self.images("horizontal", size=self.size)}
+        if self.size.y() == 50:
+            self.anims = {"stand": self.images("horizontal", size=self.size)}
+        else:
+            self.anims = {"stand": self.images("vertical", size=self.size)}
 
     def draw(self):
         rp = self.rp()
@@ -651,6 +662,7 @@ class Player(Object):
         keys = self.infos["inputs"][self.inputs].keys
         if self.controlled or self.wireless_controlled:
             self.activ = True
+            print(self.pos)
             acceleration = Vec(0, 0)
             if keys["right"] and self.speed.x() < 6:
                 acceleration += Vec(0.7, 0)
@@ -683,6 +695,7 @@ class Player(Object):
                 self.bonus_jump = False
                 self.speed.y(-16)
                 self.jump = True
+            if not self.on_ground and self.speed.y() < 0:
                 if self.anim_dir() == -1:
                     self.anim = "jump_left"
                 else:

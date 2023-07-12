@@ -35,7 +35,7 @@ class Controller:
         self.tutorial_to_go = 2
         self.player = None
         self.objects = []
-        self.actual_level = 0
+        self.actual_level = 2
         self.checkpoint = None
         self.lvl(True)
         self.UIs = {}
@@ -144,7 +144,7 @@ class Controller:
                             PlatformHorizontal(infos, Vec(8850, 850), Vec(50, 50), max_left=8850, max_right=9350),
                             PlatformVertical(infos, Vec(8800, 850), Vec(50, 50), max_down=850, max_up=550),
                             Platform(infos, Vec(9000, 750), Vec(350, 50)),
-                            Observer(infos, Vec(9400, 700)),
+                            Observer(infos, Vec(9350, 700)),
                             door1,
                             Platform(infos, Vec(9000, 550), Vec(550, 150)),
                             Button(infos, Vec(9000, 700), door2),
@@ -170,7 +170,7 @@ class Controller:
             door7 = Door(infos, Vec(14700, 300), 7)
             door8 = Door(infos, Vec(14750, 300), 8)
             self.objects = [Platform(infos, Vec(10850, 250), Vec(550, 50)),
-                            Checkpoint(infos, Vec(10950, 251), True),
+                            Checkpoint(infos, Vec(10950, 251)),
                             Platform(infos, Vec(11500, 200), Vec(100, 50)),
                             Platform(infos, Vec(11700, 150), Vec(100, 50)),
                             PlatformHorizontal(infos, Vec(11850, 300), Vec(100, 50), max_left=11850, max_right=12250),
